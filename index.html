@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blue River Glades RFP Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="leaflet.css">
+<style>
+/* Layout: full-height map with a survey-sheet side panel; panel drops below the map on phones */
+:root {
+  --bg: #f3f4ef;
+  --panel: #fbfbf8;
+  --fg: #1d2420;
+  --muted: #5d675f;
+  --rule: #d9ddd3;
+  --accent: #0f7f86;
+  --chip: #e7eae2;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Barlow", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  /* map ink: fixed across themes because it sits on imagery */
+  --p1: #35e0e8; --p2: #ffd23f; --p3: #ff6fb1;
+  --mtb: #ff7a1a; --county: #f6f03c; --greenway: #b58cff; --minor: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141917; --panel: #1b211e; --fg: #e6ebe4; --muted: #9aa69d; --rule: #2e3732;
+    --accent: #4fc6cc; --chip: #262e2a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141917; --panel: #1b211e; --fg: #e6ebe4; --muted: #9aa69d; --rule: #2e3732;
+  --accent: #4fc6cc; --chip: #262e2a; color-scheme: dark;
+}
+html, body { height: 100%; }
+body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; }
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; height: 100%; }
+#map { height: 100%; min-height: 0; background: #2a2f2c; }
+aside {
+  background: var(--panel); border-left: 1px solid var(--rule); overflow-y: auto;
+  padding-block: 18px 28px; padding-left: 18px; padding-right: max(18px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 22px; min-width: 0;
+}
+h1 { font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 1.05; margin: 0; letter-spacing: .01em; text-wrap: balance; }
+.sub { color: var(--muted); margin: 4px 0 0; font-size: 13px; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 0 0 8px; }
+section { display: flex; flex-direction: column; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--chip); border-radius: 6px; padding: 3px; gap: 3px; }
+.seg button { font: 500 13px var(--font-body); color: var(--fg); background: transparent; border: 0; border-radius: 4px; padding: 6px 4px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--panel); box-shadow: 0 1px 2px rgb(0 0 0 / .18); }
+.layer { display: grid; grid-template-columns: 18px 26px 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); cursor: pointer; }
+.layer:last-child { border-bottom: 0; }
+.layer input { margin: 0; accent-color: var(--accent); }
+.sw { height: 4px; border-radius: 2px; }
+.sw.box { height: 14px; border: 2px solid; border-radius: 2px; }
+.sw.dash { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); height: 2px; }
+.layer .n { font-family: var(--font-data); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 7px 4px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 11px var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+td.num, th.num { text-align: right; font-family: var(--font-data); font-size: 12.5px; }
+td .pid { font-family: var(--font-data); font-size: 11px; color: var(--muted); display: block; }
+.tag { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.dot { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+tfoot td { font-weight: 600; border-bottom: 0; }
+.range { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 8px; }
+.range input { width: 100%; accent-color: var(--accent); }
+.nudge { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-top: 10px; }
+.nudge button, .btn { font: 500 13px var(--font-body); color: var(--fg); background: var(--chip); border: 1px solid var(--rule); border-radius: 5px; padding: 6px 0; cursor: pointer; }
+.nudge button:hover, .btn:hover, .seg button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 8px 0 0; }
+.note b { color: var(--fg); font-weight: 600; }
+.sources { font-size: 12px; color: var(--muted); line-height: 1.55; margin: 0; padding-left: 16px; }
+.sources a { color: var(--accent); }
+#readout { font-family: var(--font-data); font-size: 11px; color: var(--muted); margin-top: 8px; word-break: break-all; }
+
+/* map labels */
+.plabel { background: rgb(10 14 12 / .78); border: 0; box-shadow: none; color: #fff; font: 600 13px var(--font-display); letter-spacing: .04em; padding: 2px 7px; border-radius: 3px; }
+.plabel::before { display: none; }
+.leaflet-tooltip.tlabel { font: 500 12px var(--font-body); }
+.leaflet-popup-content { font: 13px/1.45 var(--font-body); margin: 10px 14px; }
+.leaflet-popup-content b { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.leaflet-popup-content .mono { font-family: var(--font-data); font-size: 11.5px; }
+.leaflet-container { font-family: var(--font-body); }
+
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 62vh auto; height: auto; }
+  html, body { height: auto; }
+  #map { height: 62vh; }
+  aside { border-left: 0; border-top: 1px solid var(--rule); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); overflow: visible; }
+}
+</style>
+
+<div class="app">
+  <div id="map" role="region" aria-label="Map of the Blue River Glades RFP parcels"></div>
+  <aside>
+    <header>
+      <h1>Blue River Glades RFP Parcels</h1>
+      <p class="sub">7701–7711 Blue River Rd, Kansas City, MO 64132</p>
+    </header>
+
+    <section>
+      <h2>Base map</h2>
+      <div class="seg" role="group" aria-label="Base map">
+        <button id="base-naip" type="button" aria-pressed="true" data-base="naip">Aerial</button>
+        <button id="base-hill" type="button" aria-pressed="false" data-base="hill">LiDAR relief</button>
+        <button id="base-none" type="button" aria-pressed="false" data-base="none">Plain</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>RFP parcels</h2>
+      <table>
+        <thead><tr><th>Parcel</th><th class="num">Acres</th><th class="num">Trail mi</th></tr></thead>
+        <tbody id="ptable"></tbody>
+        <tfoot><tr><td>Total</td><td class="num" id="tot-ac">138.7</td><td class="num" id="tot-mi">–</td></tr></tfoot>
+      </table>
+      <p class="note">Acreage from the Jackson County Parcel Viewer. Trail miles are mapped OpenStreetMap trail lengths inside each boundary, measured on this page.</p>
+    </section>
+
+    <section>
+      <h2>Layers</h2>
+      <div id="layers"></div>
+    </section>
+
+    <section>
+      <h2>Strava heatmap screenshot</h2>
+      <div class="range">
+        <label for="sop">Opacity</label>
+        <input id="sop" type="range" min="0" max="100" value="70">
+        <span id="sop-v" class="n">70%</span>
+      </div>
+      <div class="nudge" role="group" aria-label="Adjust screenshot fit">
+        <button id="n-w" type="button" title="Move west" aria-label="Move west">←</button>
+        <button id="n-e" type="button" title="Move east" aria-label="Move east">→</button>
+        <button id="n-n" type="button" title="Move north" aria-label="Move north">↑</button>
+        <button id="n-s" type="button" title="Move south" aria-label="Move south">↓</button>
+        <button id="n-in" type="button" title="Shrink" aria-label="Shrink">−</button>
+        <button id="n-out" type="button" title="Enlarge" aria-label="Enlarge">+</button>
+      </div>
+      <p class="note">Lined up against Blue River Rd and the mapped trail centrelines. It's a screenshot, so expect a few metres of drift. Use the arrows to tighten the fit; your adjustments are kept in this browser.</p>
+      <div id="readout"></div>
+      <button id="n-reset" class="btn" type="button" style="margin-top:8px">Reset fit</button>
+    </section>
+
+    <section>
+      <h2>Sources</h2>
+      <ul class="sources">
+        <li>Parcels: Jackson County GIS, ParcelsAscendRelate service</li>
+        <li>Trails: OpenStreetMap contributors (ODbL), pulled Oct 31 2026</li>
+        <li>Aerial: USDA NAIP via USGS National Map</li>
+        <li>Relief: USGS 3DEP LiDAR hillshade</li>
+        <li>Heat: Strava Global Heatmap screenshot (reference only)</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const EXTENT = [[38.9690, -94.5465], [38.9925, -94.5115]];
+const PARCELS = {
+  "46-830-01-01-01-0-00-000": { no: 1, color: "var(--p1)", hex: "#35e0e8", acres: 107.7, addr: "7701 Blue River Rd", school: "Center" },
+  "46-810-02-03-00-0-00-000": { no: 2, color: "var(--p2)", hex: "#ffd23f", acres: 26.4, addr: "7711 Blue River Rd", school: "Raytown" },
+  "46-810-02-02-00-0-00-000": { no: 3, color: "var(--p3)", hex: "#ff6fb1", acres: 4.603, addr: "7703 Blue River Rd", school: "Kansas City" }
+};
+const TRAIL_CLASSES = {
+  mtb:      { label: "Mountain bike trails", color: "#ff7a1a", weight: 3, dash: null },
+  county:   { label: "County nature trails", color: "#f6f03c", weight: 3, dash: null },
+  greenway: { label: "Blue River greenway", color: "#b58cff", weight: 3.5, dash: null },
+  minor:    { label: "Other paths", color: "#ffffff", weight: 1.6, dash: "4 4" }
+};
+// Fitted by eye against OSM trail centrelines and Blue River Rd
+const STRAVA_DEFAULT = { w: -94.54002, e: -94.51838, n: 38.98895, s: 38.97536 };
+
+function trailClass(p) {
+  if (p.highway === "cycleway") return "greenway";
+  if (p.operator === "Jackson County Parks + Rec") return "county";
+  if (p.highway === "path" && (p.operator === "Urban Trail Co" || p.name)) return "mtb";
+  return "minor";
+}
+
+const map = L.map("map", { zoomSnap: 0.25, maxBounds: L.latLngBounds(EXTENT).pad(0.15), minZoom: 14, maxZoom: 19 });
+map.fitBounds([[38.9752, -94.5410], [38.9875, -94.5240]]);
+map.attributionControl.setPrefix(false);
+map.createPane("imagery").style.zIndex = 200;
+map.createPane("heat").style.zIndex = 350;
+
+const bases = {
+  naip: L.imageOverlay("naip.jpg", EXTENT, { pane: "imagery", attribution: "USDA NAIP / USGS" }),
+  hill: L.imageOverlay("hillshade.jpg", EXTENT, { pane: "imagery", attribution: "USGS 3DEP" }),
+  none: null
+};
+let currentBase = null;
+function setBase(key) {
+  if (currentBase) map.removeLayer(currentBase);
+  currentBase = bases[key];
+  if (currentBase) currentBase.addTo(map);
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.base === key)));
+}
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => setBase(b.dataset.base)));
+setBase("naip");
+
+let sb = { ...STRAVA_DEFAULT };
+try { const s = JSON.parse(localStorage.getItem("strava-fit-v2")); if (s && s.w) sb = s; } catch (e) {}
+const strava = L.imageOverlay("strava.webp", [[sb.s, sb.w], [sb.n, sb.e]], { pane: "heat", opacity: 0.7, attribution: "Strava heatmap (screenshot)" });
+
+const layerDefs = [];
+const groups = {};
+
+function addLayerRow(id, label, swatchHtml, layer, on, count) {
+  const row = document.createElement("label");
+  row.className = "layer";
+  row.innerHTML = `<input type="checkbox" id="ly-${id}" ${on ? "checked" : ""}>${swatchHtml}<span>${label}</span><span class="n">${count ?? ""}</span>`;
+  row.querySelector("input").addEventListener("change", e => e.target.checked ? layer.addTo(map) : map.removeLayer(layer));
+  document.getElementById("layers").appendChild(row);
+  if (on) layer.addTo(map);
+}
+
+// Planar length in miles, good enough at this scale
+function segMiles(a, b) {
+  const R = 3958.8, toR = Math.PI / 180;
+  const x = (b[0] - a[0]) * toR * Math.cos(((a[1] + b[1]) / 2) * toR), y = (b[1] - a[1]) * toR;
+  return Math.hypot(x, y) * R;
+}
+function inRing(pt, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+Promise.all(["parcels.json", "neighbors.json", "trails.json"].map(u => fetch(u).then(r => r.json()))).then(([parcels, neighbors, trails]) => {
+  const nb = L.geoJSON(neighbors, {
+    style: { color: "#ff4b3a", weight: 1, opacity: 0.75, fill: true, fillOpacity: 0 },
+    onEachFeature: (f, l) => l.bindPopup(`<b>Neighbouring parcel</b><br><span class="mono">${f.properties.Name}</span>`)
+  });
+  addLayerRow("nb", "Neighbouring parcels", `<span class="sw box" style="border-color:#ff4b3a"></span>`, nb, true, neighbors.features.length);
+
+  const trailLayers = {};
+  for (const k in TRAIL_CLASSES) trailLayers[k] = L.layerGroup();
+  const miles = {};
+  trails.features.forEach(f => {
+    const k = trailClass(f.properties), c = TRAIL_CLASSES[k];
+    const line = L.geoJSON(f, { style: { color: c.color, weight: c.weight, dashArray: c.dash, opacity: 0.95 } });
+    const p = f.properties;
+    line.bindPopup(`<b>${p.name || "Unnamed " + p.highway}</b><br>${p.operator || "No operator tagged"}${p.mtb ? `<br>MTB difficulty ${p.mtb}` : ""}<br><span class="mono">OSM way ${p.id}</span>`);
+    if (p.name) line.bindTooltip(p.name, { sticky: true, className: "tlabel" });
+    line.addTo(trailLayers[k]);
+    if (k !== "minor") {
+      const cs = f.geometry.coordinates;
+      for (let i = 1; i < cs.length; i++) {
+        const mid = [(cs[i - 1][0] + cs[i][0]) / 2, (cs[i - 1][1] + cs[i][1]) / 2];
+        parcels.features.forEach(pf => {
+          if (inRing(mid, pf.geometry.coordinates[0])) miles[pf.properties.Name] = (miles[pf.properties.Name] || 0) + segMiles(cs[i - 1], cs[i]);
+        });
+      }
+    }
+  });
+
+  const rfp = L.geoJSON(parcels, {
+    style: f => { const m = PARCELS[f.properties.Name]; return { color: m.hex, weight: 3, fillColor: m.hex, fillOpacity: 0.12 }; },
+    onEachFeature: (f, l) => {
+      const m = PARCELS[f.properties.Name];
+      l.bindTooltip(`No. ${m.no}`, { permanent: true, direction: "center", className: "plabel" });
+      l.bindPopup(`<b>RFP parcel No. ${m.no}</b><br>${m.addr}<br><span class="mono">${f.properties.Name}</span><br>${m.acres} acres · ${m.school} schools · TCA ${f.properties.TCA}<br>${(miles[f.properties.Name] || 0).toFixed(2)} mi of mapped trail inside`);
+    }
+  });
+
+  const tbody = document.getElementById("ptable");
+  let totMi = 0;
+  Object.entries(PARCELS).forEach(([pid, m]) => {
+    const mi = miles[pid] || 0; totMi += mi;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td><span class="tag"><span class="dot" style="background:${m.hex}"></span>No. ${m.no}</span><span class="pid">${pid}</span></td><td class="num">${m.acres}</td><td class="num">${mi.toFixed(2)}</td>`;
+    tr.style.cursor = "pointer";
+    tr.addEventListener("click", () => rfp.eachLayer(l => { if (l.feature.properties.Name === pid) { map.fitBounds(l.getBounds(), { padding: [40, 40] }); l.openPopup(); } }));
+    tbody.appendChild(tr);
+  });
+  document.getElementById("tot-mi").textContent = totMi.toFixed(2);
+
+  addLayerRow("rfp", "RFP parcels", `<span class="sw box" style="border-color:#35e0e8"></span>`, rfp, true, 3);
+  for (const k in TRAIL_CLASSES) {
+    const c = TRAIL_CLASSES[k];
+    const sw = c.dash ? `<span class="sw dash" style="color:${c.color === "#ffffff" ? "var(--muted)" : c.color}"></span>` : `<span class="sw" style="background:${c.color}"></span>`;
+    addLayerRow(k, c.label, sw, trailLayers[k], true, trailLayers[k].getLayers().length);
+  }
+  addLayerRow("strava", "Strava heatmap", `<span class="sw" style="background:linear-gradient(90deg,#1b2ea8,#5b8cff)"></span>`, strava, true, "");
+  rfp.bringToFront();
+}).catch(err => {
+  document.getElementById("layers").textContent = "The map data didn't load. Reload the page to try again.";
+  console.error(err);
+});
+
+// Strava fit controls
+const op = document.getElementById("sop"), opv = document.getElementById("sop-v");
+op.addEventListener("input", () => { strava.setOpacity(op.value / 100); opv.textContent = op.value + "%"; });
+function applyFit() {
+  strava.setBounds(L.latLngBounds([[sb.s, sb.w], [sb.n, sb.e]]));
+  document.getElementById("readout").textContent = `W ${sb.w.toFixed(5)}  E ${sb.e.toFixed(5)}  N ${sb.n.toFixed(5)}  S ${sb.s.toFixed(5)}`;
+  try { localStorage.setItem("strava-fit-v2", JSON.stringify(sb)); } catch (e) {}
+}
+const STEP = 0.00004;
+const nudges = {
+  "n-w": () => { sb.w -= STEP; sb.e -= STEP; }, "n-e": () => { sb.w += STEP; sb.e += STEP; },
+  "n-n": () => { sb.n += STEP; sb.s += STEP; }, "n-s": () => { sb.n -= STEP; sb.s -= STEP; },
+  "n-in": () => { const cx = (sb.w + sb.e) / 2, cy = (sb.n + sb.s) / 2, k = 0.995; sb.w = cx + (sb.w - cx) * k; sb.e = cx + (sb.e - cx) * k; sb.n = cy + (sb.n - cy) * k; sb.s = cy + (sb.s - cy) * k; },
+  "n-out": () => { const cx = (sb.w + sb.e) / 2, cy = (sb.n + sb.s) / 2, k = 1.005; sb.w = cx + (sb.w - cx) * k; sb.e = cx + (sb.e - cx) * k; sb.n = cy + (sb.n - cy) * k; sb.s = cy + (sb.s - cy) * k; }
+};
+for (const id in nudges) document.getElementById(id).addEventListener("click", () => { nudges[id](); applyFit(); });
+document.getElementById("n-reset").addEventListener("click", () => { sb = { ...STRAVA_DEFAULT }; applyFit(); });
+applyFit();
+</script>
